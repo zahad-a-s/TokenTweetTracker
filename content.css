@@ -1,0 +1,180 @@
+/* Import Noto Sans font */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600&display=swap');
+
+.crypto-indicator {
+  margin-top: 5px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  display: inline-block;
+}
+
+.crypto-indicator.enabled {
+  color: white;
+  background-color: #1da1f2; /* Twitter blue */
+}
+
+.crypto-indicator.error {
+  color: white;
+  background-color: orange;
+}
+
+.crypto-performance {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.9em;
+  font-style: italic;
+  color: #888;
+}
+
+.crypto-performance.positive {
+  color: green;
+}
+
+.crypto-performance.negative {
+  color: red;
+}
+
+.crypto-performance.loading::before {
+  content: "Loading...";
+  display: inline-block;
+  margin-right: 5px;
+  /* Add a simple spinner if you want, e.g., using CSS animation */
+}
+
+.crypto-performance.error {
+  color: orange;
+}
+
+.loading {
+  color: orange;
+}
+
+.positive {
+  color: green;
+}
+
+.negative {
+  color: red;
+}
+
+.crypto-container {
+    display: flex;
+    align-items: center;
+    margin-top: 5px;
+    position: relative; /* Make the container a positioning context */
+}
+
+/* Make our selector more specific */
+button.get-performance-button {
+    background-color: transparent !important;
+    color: rgb(83, 100, 113) !important;
+    border: none !important;
+    padding: 0 12px !important;
+    height: 36px !important;
+    font-size: 15px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, Arial, sans-serif !important;
+    font-weight: 400 !important;
+    border-radius: 9999px !important;
+    transition: all 0.2s !important;
+    gap: 4px !important;
+    text-decoration: none !important;
+    line-height: 20px !important;
+    white-space: nowrap !important;
+}
+
+button.get-performance-button:hover {
+    background-color: rgba(29, 155, 240, 0.1) !important;
+    color: rgb(29, 155, 240) !important;
+}
+
+/* Remove any additional styling we don't need */
+.get-performance-button::after {
+    display: none;
+}
+
+.crypto-popup {
+    position: absolute;
+    top: 40px;
+    right: 0;
+    background-color: rgb(255, 255, 255);
+    border-radius: 16px;
+    border: 1px solid rgb(239, 243, 244);
+    box-shadow: rgb(101 119 134 / 20%) 0px 0px 15px, rgb(101 119 134 / 15%) 0px 0px 3px 1px;
+    padding: 12px;
+    min-width: 200px;  /* Reduced width */
+    max-width: 280px;  /* Added max-width */
+    z-index: 1000;
+    font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    color: rgb(83, 100, 113);  /* Twitter's text color */
+}
+
+.popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgb(239, 243, 244);
+    padding-bottom: 8px;
+}
+
+.popup-header h2 {
+    font-size: 15px;
+    margin: 0;
+    color: rgb(15, 20, 25);  /* Twitter's dark text color */
+    font-weight: 600;
+}
+
+.close-button {
+    cursor: pointer;
+    font-size: 20px;
+    font-weight: bold;
+    color: #999;
+}
+
+.close-button:hover {
+    color: #333;
+}
+
+.popup-content p {
+    margin: 4px 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.popup-content .positive {
+    color: green;
+}
+
+.popup-content .negative {
+    color: darkred;
+}
+
+/* Tabs styling for multiple tokens */
+.popup-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgb(239, 243, 244);
+    padding-bottom: 8px;
+}
+
+.popup-tab {
+    padding: 4px 12px;
+    border-radius: 9999px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+    color: rgb(83, 100, 113);
+}
+
+.popup-tab.active {
+    background-color: rgba(29, 155, 240, 0.1);
+    color: rgb(29, 155, 240);
+} 

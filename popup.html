@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TokenTweetTracker</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    #apiKeyInput {
+      width: 90%;
+      margin-bottom: 10px;
+    }
+    #saveButton {
+      background-color: #4CAF50;
+      color: white;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 10px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <h1>TokenTweetTracker</h1>
+  <p>Enter your CoinMarketCap API Key:</p>
+  <input type="password" id="apiKeyInput" placeholder="Your CMC API Key">
+  <button id="saveButton">Save API Key</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html> 
