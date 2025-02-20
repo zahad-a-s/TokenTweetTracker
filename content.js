@@ -231,24 +231,36 @@ function processTweet(tweetElement) {
                 }
 
                 try {
-                    // Fetch data for all tokens in parallel
-                    const responses = await Promise.all(cryptoEntities.map(entity => 
-                        new Promise((resolve, reject) => {
-                            chrome.runtime.sendMessage({
-                                action: 'fetchPerformance',
-                                tokenSymbol: entity.symbol,
-                                tweetTimestamp: timestamp
-                            }, response => {
-                                if (chrome.runtime.lastError) {
-                                    reject(new Error(chrome.runtime.lastError.message));
-                                } else {
-                                    resolve({...response, tokenSymbol: entity.symbol});
-                                }
-                            });
-                        })
-                    ));
+                    const response = await new Promise((resolve, reject) => {
+                        chrome.runtime.sendMessage({
+                            action: 'fetchPerformanceBatch',
+                            tokens: cryptoEntities.map(entity => entity.symbol),
+                            tweetTimestamp: timestamp
+                        }, response => {
+                            if (chrome.runtime.lastError) {
+                                reject(new Error(chrome.runtime.lastError.message));
+                            } else {
+                                // Ensure response is always an array
+                                resolve(Array.isArray(response) ? response : []);
+                            }
+                        });
+                    });
 
-                    popup = createPopup(responses, getPerformanceButton);
+                    // Check if all tokens had errors
+                    const allErrors = response.every(result => result.error);
+                    if (allErrors && response.length > 0) {
+                        throw new Error(response[0].message);
+                    }
+
+                    // Sort tokens by order of appearance in tweet
+                    const sortedTokens = response.map(tokenData => ({
+                        ...tokenData,
+                        index: cryptoEntities.findIndex(entity => 
+                            entity.symbol.toUpperCase() === tokenData.tokenSymbol.toUpperCase()
+                        )
+                    })).sort((a, b) => a.index - b.index);
+
+                    popup = createPopup(sortedTokens, getPerformanceButton);
                 } catch (error) {
                     console.error('Error fetching performance:', error);
                     createPopup({ error: true, message: error.message }, getPerformanceButton);
