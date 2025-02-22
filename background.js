@@ -87,9 +87,9 @@ async function fetchHistoricalQuote(coinId, timestamp, apiKey) {
         return cache.get(cacheKey);
     }
 
-    // Wider time window, smaller interval, NO count
-    const time_start = timestamp - (12 * 60 * 60); // 12 hours before
-    const time_end = timestamp + (12 * 60 * 60);   // 12 hours after
+    // Small time window around the tweet timestamp
+    const time_start = timestamp - (5 * 60); // 5 minutes before
+    const time_end = timestamp + (5 * 60);   // 5 minutes after
     const interval = '5m'; // 5-minute interval
 
     const url = `${CMC_HISTORICAL_BASE}/cryptocurrency/quotes/historical?id=${coinId}&time_start=${time_start}&time_end=${time_end}&interval=${interval}`;
