@@ -38,43 +38,83 @@ function getTweetTimestamp(tweetElement) {
 function formatPrice(price) {
     if (price === null || price === undefined) return 'N/A';
     
-    if (price < 0.01) {
-        // Find first non-zero decimal place and show one more digit
-        let decimals = 2;
-        while (price < 1 / Math.pow(10, decimals) && decimals < 8) {
-            decimals++;
-        }
-        return `$${price.toFixed(decimals + 1)}`;
-    } else if (price < 0.10) {
-        return `$${price.toFixed(3)}`; // Show 3 decimal places
+    if (price < 0.0001) {
+        // For extremely small prices (like SHIB), show 8 decimals
+        return `$${price.toFixed(8)}`;
+    } else if (price < 1) {
+        // For prices under $1, show 4 decimals
+        return `$${price.toFixed(4)}`;
+    } else if (price < 10) {
+        // For prices under $10, show 3 decimals
+        return `$${price.toFixed(3)}`;
     } else {
-        return `$${price.toFixed(2)}`; // Standard 2 decimal places
+        // For larger prices, show 2 decimals
+        return `$${price.toFixed(2)}`;
     }
 }
 
-// Function to create the styled popup
-function createPopup(data, button) {
+// Add this function to handle popup cleanup
+function cleanupPopup() {
+    const existingPopups = document.querySelectorAll('.crypto-popup');
+    existingPopups.forEach(popup => popup.remove());
+}
+
+// Function to create the popup (now handles all states)
+function createPopup(button) {
+    cleanupPopup(); // Remove any existing popups
+    
     const popup = document.createElement('div');
     popup.classList.add('crypto-popup');
+    
+    setPopupLoadingState(popup);
+    
+    document.body.appendChild(popup);
+    positionPopup(popup, button);
 
-    if (data.error) {
-        popup.innerHTML = `
-            <div class="popup-header">
-                <h2>Error</h2>
-                <span class="close-button">&times;</span>
-            </div>
-            <div class="popup-content">
-                <p>${data.message}</p>
-            </div>
-        `;
-    } else {
-        // If data is an array, we have multiple tokens
-        const tokens = Array.isArray(data) ? data : [data];
-        
-        let tabsHtml = '';
-        if (tokens.length > 1) {
-            tabsHtml = `
-                <div class="popup-tabs">
+    const closeButton = popup.querySelector('.close-button');
+    closeButton.addEventListener('click', () => cleanupPopup());
+
+    // Add cleanup on navigation
+    window.addEventListener('popstate', cleanupPopup);
+    window.addEventListener('pushState', cleanupPopup);
+    window.addEventListener('replaceState', cleanupPopup);
+
+    return popup;
+}
+
+function setPopupLoadingState(popup) {
+    popup.innerHTML = `
+        <div class="popup-header">
+            <h2>Loading Prices...</h2>
+            <span class="close-button">&times;</span>
+        </div>
+        <div class="popup-content">
+            <div class="loading-spinner"></div>
+        </div>
+    `;
+}
+
+function setPopupErrorState(popup, error) {
+    popup.innerHTML = `
+        <div class="popup-header">
+            <h2>Error</h2>
+            <span class="close-button">&times;</span>
+        </div>
+        <div class="popup-content">
+            <p>${error.message}</p>
+        </div>
+    `;
+}
+
+function setPopupDataState(popup, data) {
+    const tokens = Array.isArray(data) ? data : [data];
+    
+    let tabsHtml = '';
+    if (tokens.length > 1) {
+        tabsHtml = `
+            <div class="popup-tabs">
+                <button class="tab-arrow left" disabled>←</button>
+                <div class="tabs-container">
                     ${tokens.map((token, index) => `
                         <button class="popup-tab ${index === 0 ? 'active' : ''}" 
                                 data-index="${index}">
@@ -82,59 +122,91 @@ function createPopup(data, button) {
                         </button>
                     `).join('')}
                 </div>
-            `;
-        }
-
-        const contentHtml = tokens.map((token, index) => `
-            <div class="popup-content" data-index="${index}" 
-                 style="display: ${index === 0 ? 'block' : 'none'}">
-                <p>Performance: <span class="${token.performance >= 0 ? 'positive' : 'negative'}">${token.performance.toFixed(2)}%</span></p>
-                <p>Historical: ${formatPrice(token.historicalPrice)}</p>
-                <p>Current: ${formatPrice(token.currentPrice)}</p>
-                <p>High: ${formatPrice(token.highPrice)}</p>
-                <p>Low: ${formatPrice(token.lowPrice)}</p>
-                <p>Time: ${token.closestTimestamp}</p>
+                <button class="tab-arrow right">→</button>
             </div>
-        `).join('');
-
-        popup.innerHTML = `
-            <div class="popup-header">
-                <h2>Token Performance</h2>
-                <span class="close-button">&times;</span>
-            </div>
-            ${tabsHtml}
-            ${contentHtml}
         `;
-
-        // Add tab switching functionality if there are multiple tokens
-        if (tokens.length > 1) {
-            const tabs = popup.querySelectorAll('.popup-tab');
-            const contents = popup.querySelectorAll('.popup-content');
-            
-            tabs.forEach(tab => {
-                tab.addEventListener('click', () => {
-                    const index = tab.dataset.index;
-                    tabs.forEach(t => t.classList.remove('active'));
-                    tab.classList.add('active');
-                    contents.forEach(content => {
-                        content.style.display = content.dataset.index === index ? 'block' : 'none';
-                    });
-                });
-            });
-        }
     }
 
-    document.body.appendChild(popup);
+    const contentHtml = tokens.map((token, index) => {
+        // Add debug logging
+        console.log('Processing token data:', token);
+        
+        if (!token || token.error) {
+            return `
+                <div class="popup-content" data-index="${index}" 
+                     style="display: ${index === 0 ? 'block' : 'none'}">
+                    <p class="error-message">${token.message || 'Unknown error'}</p>
+                </div>
+            `;
+        }
+        
+        try {
+            return `
+                <div class="popup-content" data-index="${index}" 
+                     style="display: ${index === 0 ? 'block' : 'none'}">
+                    <p>Performance: <span class="${token.performance >= 0 ? 'positive' : 'negative'}">${Number(token.performance).toFixed(2)}%</span></p>
+                    <p>Historical: ${formatPrice(token.historicalPrice)}</p>
+                    <p>Current: ${formatPrice(token.currentPrice)}</p>
+                    <p>Time: ${token.closestTimestamp}</p>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Error processing token data:', error, token);
+            return `
+                <div class="popup-content" data-index="${index}" 
+                     style="display: ${index === 0 ? 'block' : 'none'}">
+                    <p class="error-message">Error displaying data for ${token.tokenSymbol}</p>
+                </div>
+            `;
+        }
+    }).join('');
 
-    const closeButton = popup.querySelector('.close-button');
-    closeButton.addEventListener('click', () => {
-        popup.remove();
-    });
+    popup.innerHTML = `
+        <div class="popup-header">
+            <h2>Token Performance</h2>
+            <span class="close-button">&times;</span>
+        </div>
+        ${tabsHtml}
+        ${contentHtml}
+    `;
 
-    // Position the popup relative to the button
-    positionPopup(popup, button);
+    // Add both scrolling AND tab switching functionality
+    if (tokens.length > 1) {
+        const tabsContainer = popup.querySelector('.tabs-container');
+        const leftArrow = popup.querySelector('.tab-arrow.left');
+        const rightArrow = popup.querySelector('.tab-arrow.right');
+        const tabs = popup.querySelectorAll('.popup-tab');
+        const contents = popup.querySelectorAll('.popup-content');
+        
+        // Tab switching
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const index = tab.dataset.index;
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                contents.forEach(content => {
+                    content.style.display = content.dataset.index === index ? 'block' : 'none';
+                });
+            });
+        });
 
-    return popup;
+        // Scrolling
+        const updateArrowStates = () => {
+            leftArrow.disabled = tabsContainer.scrollLeft <= 0;
+            rightArrow.disabled = tabsContainer.scrollLeft >= tabsContainer.scrollWidth - tabsContainer.clientWidth;
+        };
+
+        leftArrow.addEventListener('click', () => {
+            tabsContainer.scrollBy({ left: -100, behavior: 'smooth' });
+        });
+
+        rightArrow.addEventListener('click', () => {
+            tabsContainer.scrollBy({ left: 100, behavior: 'smooth' });
+        });
+
+        tabsContainer.addEventListener('scroll', updateArrowStates);
+        updateArrowStates();
+    }
 }
 
 function positionPopup(popup, button) {
@@ -229,7 +301,9 @@ function processTweet(tweetElement) {
                 if (popup) {
                     popup.remove();
                 }
-
+                
+                popup = createPopup(getPerformanceButton);
+                
                 try {
                     const response = await new Promise((resolve, reject) => {
                         chrome.runtime.sendMessage({
@@ -240,30 +314,14 @@ function processTweet(tweetElement) {
                             if (chrome.runtime.lastError) {
                                 reject(new Error(chrome.runtime.lastError.message));
                             } else {
-                                // Ensure response is always an array
                                 resolve(Array.isArray(response) ? response : []);
                             }
                         });
                     });
 
-                    // Check if all tokens had errors
-                    const allErrors = response.every(result => result.error);
-                    if (allErrors && response.length > 0) {
-                        throw new Error(response[0].message);
-                    }
-
-                    // Sort tokens by order of appearance in tweet
-                    const sortedTokens = response.map(tokenData => ({
-                        ...tokenData,
-                        index: cryptoEntities.findIndex(entity => 
-                            entity.symbol.toUpperCase() === tokenData.tokenSymbol.toUpperCase()
-                        )
-                    })).sort((a, b) => a.index - b.index);
-
-                    popup = createPopup(sortedTokens, getPerformanceButton);
+                    setPopupDataState(popup, response);
                 } catch (error) {
-                    console.error('Error fetching performance:', error);
-                    createPopup({ error: true, message: error.message }, getPerformanceButton);
+                    setPopupErrorState(popup, error);
                 }
             });
         } else {
@@ -299,4 +357,128 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('DOMContentLoaded event fired.');
     const initialTweets = document.querySelectorAll('article[data-testid="tweet"]');
     initialTweets.forEach(processTweet);
-}); 
+});
+
+// Update the style element with new CSS for tabs
+const style = document.createElement('style');
+style.textContent = `
+    .loading-spinner {
+        width: 30px;
+        height: 30px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .error-message {
+        color: #e74c3c;
+        font-style: italic;
+    }
+
+    .popup-tabs {
+        display: flex;
+        align-items: center;
+        overflow-x: hidden;
+        position: relative;
+        padding: 0 24px; /* Increased space for arrows */
+        max-width: 300px;
+        margin: 4px 0;
+    }
+
+    .tabs-container {
+        display: flex;
+        overflow-x: scroll;
+        scroll-behavior: smooth;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .tabs-container::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab-arrow {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: transparent;
+        color: rgb(83, 100, 113);
+        border: none;
+        width: 24px;
+        height: 24px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1;
+        font-size: 20px;
+        transition: background-color 0.2s;
+        border-radius: 50%;
+    }
+
+    .tab-arrow:hover:not(:disabled) {
+        background-color: rgba(15, 20, 25, 0.1);
+        color: rgb(15, 20, 25);
+    }
+
+    .tab-arrow.left {
+        left: 0;
+    }
+
+    .tab-arrow.right {
+        right: 0;
+    }
+
+    .tab-arrow:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+    }
+
+    .popup-tab {
+        white-space: nowrap;
+        padding: 8px 16px;
+        margin: 0 2px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: rgb(83, 100, 113);
+        border-radius: 9999px;
+        transition: background-color 0.2s, color 0.2s;
+    }
+
+    .popup-tab:hover {
+        background-color: rgba(15, 20, 25, 0.1);
+        color: rgb(15, 20, 25);
+    }
+
+    .popup-tab.active {
+        color: rgb(29, 155, 240);
+        font-weight: 500;
+    }
+
+    .popup-tab.active:hover {
+        background-color: rgba(29, 155, 240, 0.1);
+        color: rgb(29, 155, 240);
+    }
+`;
+document.head.appendChild(style);
+
+// Add this code to handle Twitter's custom navigation
+const originalPushState = history.pushState;
+history.pushState = function() {
+    originalPushState.apply(this, arguments);
+    cleanupPopup();
+};
+
+const originalReplaceState = history.replaceState;
+history.replaceState = function() {
+    originalReplaceState.apply(this, arguments);
+    cleanupPopup();
+}; 

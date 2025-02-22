@@ -251,8 +251,9 @@ async function testApiKey(apiKey) {
 
 async function getCMCId(symbol, apiKey) {
     const now = Date.now();
+    const upperSymbol = symbol.toUpperCase();
     
-    // Check if cache needs updating
+    // Check if cache needs updating (reduce frequency to once per day)
     if (now - cmcIdCache.lastUpdate > cmcIdCache.CACHE_DURATION || Object.keys(cmcIdCache.ids).length === 0) {
         try {
             const response = await fetch(`${CMC_API_BASE}/cryptocurrency/map`, {
@@ -263,9 +264,6 @@ async function getCMCId(symbol, apiKey) {
             });
             
             const data = await response.json();
-            
-            // Update cache
-            cmcIdCache.ids = {};
             
             // Group tokens by symbol
             const tokensBySymbol = {};
@@ -279,41 +277,33 @@ async function getCMCId(symbol, apiKey) {
 
             // For each symbol, store the ID of the token with highest market cap
             Object.entries(tokensBySymbol).forEach(([symbol, tokens]) => {
-                // Sort by market cap (descending)
                 tokens.sort((a, b) => {
                     const aRank = a.cmc_rank || Infinity;
                     const bRank = b.cmc_rank || Infinity;
-                    return aRank - bRank;  // Lower rank = higher market cap
+                    return aRank - bRank;
                 });
-                
-                // Store the ID of the highest market cap token
                 cmcIdCache.ids[symbol] = tokens[0].id;
             });
 
             cmcIdCache.lastUpdate = now;
             
+            // Only log once when cache is updated
             console.log('Updated CMC ID cache:', cmcIdCache.ids);
-            
         } catch (error) {
             console.error('Error updating CMC ID cache:', error);
-            // If cache update fails but we have existing cache, continue using it
             if (Object.keys(cmcIdCache.ids).length === 0) {
                 throw error;
             }
         }
     }
     
-    const id = cmcIdCache.ids[symbol.toUpperCase()];
-    if (!id) {
-        throw new Error(`No ID found for symbol: ${symbol}`);
-    }
-    
-    return id;
+    return cmcIdCache.ids[upperSymbol] || null;
 }
 
 // Batch fetch historical prices for multiple tokens
 async function fetchHistoricalPrices(tokens, timestamp) {
-    // Get API key first
+    console.log('fetchHistoricalPrices called with tokens:', tokens, 'timestamp:', timestamp);
+    
     const apiKey = await getApiKey();
     if (!apiKey) {
         throw new Error('API key not found. Please set your CoinMarketCap API key in the extension options.');
@@ -321,6 +311,8 @@ async function fetchHistoricalPrices(tokens, timestamp) {
 
     const now = Date.now();
     const uniqueTokens = [...new Set(tokens.map(t => t.toUpperCase()))];
+    console.log('Processing unique tokens:', uniqueTokens);
+
     const uncachedTokens = [];
     const results = {};
 
@@ -328,88 +320,148 @@ async function fetchHistoricalPrices(tokens, timestamp) {
     for (const symbol of uniqueTokens) {
         const cachedData = priceCache.data[symbol];
         if (cachedData && now - cachedData.lastUpdate < priceCache.CACHE_DURATION) {
+            console.log(`Using cached data for ${symbol}:`, cachedData.data);
             results[symbol] = cachedData.data;
         } else {
+            console.log(`No cache hit for ${symbol}, will fetch`);
             uncachedTokens.push(symbol);
         }
     }
 
     if (uncachedTokens.length > 0) {
         try {
-            const ids = await Promise.all(uncachedTokens.map(symbol => getCMCId(symbol, apiKey)));
+            console.log('Fetching CMC IDs for tokens:', uncachedTokens);
+            const idMap = {};
+            const allIds = await Promise.all(uncachedTokens.map(symbol => getCMCId(symbol, apiKey)));
             
-            console.log('Fetching historical prices for IDs:', ids);
+            uncachedTokens.forEach((symbol, index) => {
+                if (allIds[index] !== null) {
+                    idMap[symbol] = allIds[index];
+                    console.log(`Mapped ${symbol} to ID ${allIds[index]}`);
+                } else {
+                    console.log(`No CMC ID found for ${symbol}`);
+                    results[symbol] = {
+                        error: true,
+                        message: `Token not found: ${symbol}`
+                    };
+                }
+            });
 
-            // Construct URL with query parameters
-            const queryParams = new URLSearchParams({
-                id: ids.join(','),
-                time_start: Math.floor(timestamp),  // Ensure timestamp is an integer
-                time_end: Math.floor(Date.now() / 1000),
+            const validTokens = Object.keys(idMap);
+            console.log('Valid tokens with CMC IDs:', validTokens);
+            
+            if (validTokens.length === 0) return results;
+
+            // Historical data fetch
+            const timeStart = timestamp - (15 * 60);
+            const timeEnd = timestamp + (15 * 60);
+            
+            const historicalParams = new URLSearchParams({
+                id: Object.values(idMap).join(','),
+                time_start: Math.floor(timeStart),
+                time_end: Math.floor(timeEnd),
                 interval: '5m'
             });
 
-            const url = `${CMC_HISTORICAL_BASE}/cryptocurrency/quotes/historical?${queryParams}`;
-            console.log('Fetching URL:', url);  // Debug log
-
-            const response = await fetch(url, {
-                method: 'GET',
+            const historicalUrl = `${CMC_HISTORICAL_BASE}/cryptocurrency/quotes/historical?${historicalParams}`;
+            console.log('Fetching historical data:', historicalUrl);
+            
+            const response = await fetch(historicalUrl, {
                 headers: {
                     'X-CMC_PRO_API_KEY': apiKey,
                     'Accept': 'application/json'
                 }
             });
 
+            console.log('Historical API response status:', response.status);
+            const responseText = await response.text();
+            console.log('Historical API raw response:', responseText);
+            
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('API Error Response:', errorText);  // Debug log
-                throw new Error(`HTTP error! status: ${response.status}. ${errorText}`);
+                throw new Error(`Historical API error: ${response.status} - ${responseText}`);
             }
 
-            const data = await response.json();
-            console.log('Historical price data received:', data);
+            const data = JSON.parse(responseText);
 
-            // Process and cache results with better error handling
-            uncachedTokens.forEach((symbol, index) => {
-                const id = ids[index];
-                const tokenData = data.data && data.data[id];
+            // Current prices fetch
+            const currentParams = new URLSearchParams({
+                symbol: validTokens.join(','),
+                convert: 'USD',
+                skip_invalid: 'true'
+            });
+            
+            const currentUrl = `${CMC_API_BASE}/cryptocurrency/quotes/latest?${currentParams}`;
+            console.log('Fetching current prices:', currentUrl);
+            
+            const currentPricesResponse = await fetch(currentUrl, {
+                headers: {
+                    'X-CMC_PRO_API_KEY': apiKey,
+                    'Accept': 'application/json'
+                }
+            });
+
+            console.log('Current prices API response status:', currentPricesResponse.status);
+            const currentPricesText = await currentPricesResponse.text();
+            console.log('Current prices API raw response:', currentPricesText);
+            
+            if (!currentPricesResponse.ok) {
+                throw new Error(`Current prices API error: ${currentPricesResponse.status} - ${currentPricesText}`);
+            }
+
+            const currentPricesData = JSON.parse(currentPricesText);
+
+            // Process results
+            for (const symbol of validTokens) {
+                console.log(`Processing data for ${symbol}`);
+                const id = idMap[symbol];
+                const tokenData = data.data[id];
+                const currentPriceData = currentPricesData.data[symbol];
                 
-                if (!tokenData || !tokenData.quotes) {
+                console.log(`Token ${symbol} historical data:`, tokenData);
+                console.log(`Token ${symbol} current price data:`, currentPriceData);
+
+                if (!tokenData || !tokenData.quotes || tokenData.quotes.length === 0) {
                     results[symbol] = {
                         error: true,
                         message: `No data available for ${symbol}`
                     };
-                    return;
+                    continue;
                 }
 
-                // Process the quotes to find historical, current, high, and low prices
+                if (!currentPriceData || !currentPriceData.quote || !currentPriceData.quote.USD) {
+                    results[symbol] = {
+                        error: true,
+                        message: `No current price data available for ${symbol}`
+                    };
+                    continue;
+                }
+
                 const quotes = tokenData.quotes;
-                let historicalPrice = null;
-                let highPrice = -Infinity;
-                let lowPrice = Infinity;
                 let closestQuote = null;
                 let minTimeDiff = Infinity;
 
+                // Find closest quote to tweet timestamp
                 quotes.forEach(quote => {
                     const quoteTime = new Date(quote.timestamp).getTime() / 1000;
                     const timeDiff = Math.abs(quoteTime - timestamp);
-                    const price = quote.quote.USD.price;
-
                     if (timeDiff < minTimeDiff) {
                         minTimeDiff = timeDiff;
-                        historicalPrice = price;
                         closestQuote = quote;
                     }
-
-                    highPrice = Math.max(highPrice, price);
-                    lowPrice = Math.min(lowPrice, price);
                 });
 
+                if (!closestQuote) {
+                    results[symbol] = {
+                        error: true,
+                        message: `No close data found for ${symbol}`
+                    };
+                    continue;
+                }
+
                 const processedData = {
-                    historicalPrice,
-                    currentPrice: quotes[quotes.length - 1].quote.USD.price,
-                    performance: ((quotes[quotes.length - 1].quote.USD.price - historicalPrice) / historicalPrice) * 100,
-                    highPrice,
-                    lowPrice,
+                    historicalPrice: closestQuote.quote.USD.price,
+                    currentPrice: currentPriceData.quote.USD.price,
+                    performance: ((currentPriceData.quote.USD.price - closestQuote.quote.USD.price) / closestQuote.quote.USD.price) * 100,
                     timestamp: closestQuote.timestamp
                 };
 
@@ -420,13 +472,14 @@ async function fetchHistoricalPrices(tokens, timestamp) {
                     data: processedData,
                     lastUpdate: now
                 };
-            });
+            }
         } catch (error) {
-            console.error('Error fetching historical prices:', error);
+            console.error('Error in fetchHistoricalPrices:', error);
             throw error;
         }
     }
 
+    console.log('Final results:', results);
     return results;
 }
 
@@ -435,17 +488,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'fetchPerformanceBatch') {
         fetchHistoricalPrices(request.tokens, request.tweetTimestamp)
             .then(data => {
-                if (!data || data.error) {
-                    // Return an array with error for each token
-                    const errorResults = request.tokens.map(symbol => ({
-                        tokenSymbol: symbol,
-                        error: true,
-                        message: data?.message || 'Failed to fetch data'
-                    }));
-                    sendResponse(errorResults);
-                    return;
-                }
-                
                 // Transform the data into an array of token results
                 const results = request.tokens.map(symbol => {
                     const tokenData = data[symbol.toUpperCase()];
@@ -456,20 +498,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             message: `No data found for ${symbol}`
                         };
                     }
+                    if (tokenData.error) {  // Check if it's an error object
+                        return {
+                            tokenSymbol: symbol,
+                            error: true,
+                            message: tokenData.message
+                        };
+                    }
                     return {
                         tokenSymbol: symbol,
                         historicalPrice: tokenData.historicalPrice,
                         currentPrice: tokenData.currentPrice,
                         performance: tokenData.performance,
-                        highPrice: tokenData.highPrice,
-                        lowPrice: tokenData.lowPrice,
                         closestTimestamp: tokenData.timestamp
                     };
                 });
                 sendResponse(results);
             })
             .catch(error => {
-                // Return an array with error for each token
                 const errorResults = request.tokens.map(symbol => ({
                     tokenSymbol: symbol,
                     error: true,
