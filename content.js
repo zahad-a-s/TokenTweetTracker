@@ -108,6 +108,20 @@ function setPopupErrorState(popup, error) {
     content.innerHTML = `<p class="error-message">${error.message}</p>`;
 }
 
+// Add this helper function to format dates in local timezone
+function formatTimestamp(isoString) {
+    const date = new Date(isoString);
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return `${date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short'
+    })}`;
+}
+
 function setPopupDataState(popup, data) {
     const tokens = Array.isArray(data) ? data : [data];
     popup.querySelector('.popup-header h2').textContent = 'Token Performance';
@@ -149,7 +163,7 @@ function setPopupDataState(popup, data) {
                     <p>Performance: <span class="${token.performance >= 0 ? 'positive' : 'negative'}">${Number(token.performance).toFixed(2)}%</span></p>
                     <p>Historical: ${formatPrice(token.historicalPrice)}</p>
                     <p>Current: ${formatPrice(token.currentPrice)}</p>
-                    <p>Time: ${token.closestTimestamp}</p>
+                    <p>Time: ${formatTimestamp(token.closestTimestamp)}</p>
                 </div>
             `;
         } catch (error) {
