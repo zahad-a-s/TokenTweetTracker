@@ -18,7 +18,6 @@ A Chrome extension that tracks cryptocurrency token prices mentioned in tweets o
 
 1.  **Download the Extension**
 
-    -   Go to the GitHub repository: `https://github.com/yourusername/TokenTweetTracker`
     -   Click the green "Code" button.
     -   Select "Download ZIP" from the dropdown menu.
     -   Extract the downloaded ZIP file to a folder on your computer.
