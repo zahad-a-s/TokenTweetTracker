@@ -1,294 +1,150 @@
-Here's a README for the TokenTweetTracker Chrome extension:
-
 # TokenTweetTracker
 
-A Chrome extension that tracks cryptocurrency token prices mentioned in tweets. When you see a tweet with a token symbol (e.g., `$BTC`), the extension adds a "⌾ Price" button that shows historical and current price data.
+A Chrome extension that tracks cryptocurrency token prices mentioned in tweets on Twitter (X). When you see a tweet with a token symbol (e.g., `$BTC`), the extension adds a "⌾ Price" button. Clicking this button displays historical and current price data, along with the performance percentage since the tweet was posted.
 
 ## Features
 
-- Detects cryptocurrency tokens mentioned with `$` symbol in tweets
-- Shows price performance since tweet posting time
-- Displays historical price, current price, and high/low ranges
-- Integrates with CoinMarketCap's API for reliable price data
+-   Detects cryptocurrency tokens mentioned with a `$` symbol in tweets on twitter.com and x.com.
+-   Shows price performance (percentage change) since the tweet's posting time.
+-   Displays historical price (closest to the tweet time), current price, and high/low prices within a 5-minute window around the tweet's timestamp.
+-   Integrates with CoinMarketCap's API for price data.
+-   Supports multiple tokens in a single tweet, displaying data in a tabbed interface within the popup.
+-   Handles loading and error states gracefully.
+-   Caches API responses to improve performance and reduce API calls.  The cache for price data lasts for 5 minutes, and the cache for CoinMarketCap IDs lasts for 24 hours.
+-   Includes dark mode support that automatically adapts to Twitter's theme.
+-   Cleans up popups on navigation, ensuring only one popup is visible at a time.
 
 ## Installation Guide
 
-1. **Clone the Repository**
-```bash
-git clone https://github.com/yourusername/TokenTweetTracker.git
-cd TokenTweetTracker
-```
+1.  **Download the Extension**
 
-2. **Get a CoinMarketCap API Key**
-   - Visit [CoinMarketCap's API Portal](https://pro.coinmarketcap.com/)
-   - Sign up for a free account
-   - Generate an API key from your dashboard
+    -   Go to the GitHub repository: `https://github.com/yourusername/TokenTweetTracker`
+    -   Click the green "Code" button.
+    -   Select "Download ZIP" from the dropdown menu.
+    -   Extract the downloaded ZIP file to a folder on your computer.
 
-3. **Load the Extension in Chrome**
-   - Open Chrome and go to `chrome://extensions/`
-   - Enable "Developer mode" (top-right toggle)
-   - Click "Load unpacked"
-   - Select the `TokenTweetTracker` directory
+2.  **Load into Google Chrome**
 
-4. **Configure the Extension**
-   - Click the extension icon in Chrome's toolbar
-   - Enter your CoinMarketCap API key
-   - Click "Save API Key"
+    -   Open Google Chrome
+    -   Type `chrome://extensions` in the address bar and press Enter
+    -   Enable "Developer mode" using the toggle switch in the top-right corner
+    -   Click "Load unpacked" in the top-left corner
+    -   Navigate to and select the extracted TokenTweetTracker folder
+    -   The extension should now appear in your extensions list
 
-5. **Test the Extension**
-   - Visit [Twitter](https://twitter.com)
-   - Find a tweet mentioning a token (e.g., `$BTC`)
-   - Click the "⌾ Price" button next to the tweet
+3.  **Get a CoinMarketCap API Key**
+
+    -   Visit [CoinMarketCap's API Portal](https://pro.coinmarketcap.com/)
+    -   Sign up for a free account (Basic plan).
+    -   Generate an API key from your dashboard.  **Important:** Keep your API key secret.
+
+4.  **Load the Extension in Chrome**
+
+    -   Open Chrome and go to `chrome://extensions/`
+    -   Enable "Developer mode" (top-right toggle)
+    -   Click "Load unpacked"
+    -   Select the `TokenTweetTracker` directory.
+
+5.  **Configure the Extension**
+
+    -   Click the TokenTweetTracker extension icon in Chrome's toolbar.
+    -   Enter your CoinMarketCap API key in the input field.
+    -   Click "Save API Key".  The key is stored locally using `chrome.storage.sync`.
+
+6.  **Test the Extension**
+
+    -   Visit [Twitter/X](https://x.com).
+    -   Find a tweet mentioning a token (e.g., `$BTC`, `$ETH`, `$SOL`).
+    -   Click the "⌾ Price" button that appears next to the tweet's top-right actions (should be left of the xAI/Grok button).
 
 ## How It Works
 
 The extension works by:
-1. Monitoring tweets for `$` symbols followed by letters (see content.js)
 
-```11:22:content.js
-function findCryptoEntities(text) {
-    console.log('findCryptoEntities called with text:', text);
-    const tokens = [];
-    const tokenRegex = /\$([a-zA-Z]+)\b/g; // Only letters after the $
-    let match;
+1.  **Monitoring Tweets:** The `content.js` script uses a `MutationObserver` to monitor the Twitter/X DOM for new tweets.
+    ```javascript:content.js
+    startLine: 344
+    endLine: 359
+    ```
 
-    while ((match = tokenRegex.exec(text)) !== null) {
-        tokens.push({ type: 'token', symbol: match[1], index: match.index, length: match[0].length });
-    }
-    console.log('findCryptoEntities found tokens:', tokens);
-    return tokens;
-}
-```
+2.  **Detecting Tokens:** The `findCryptoEntities` function in `content.js` identifies potential cryptocurrency tokens using a regular expression.
+    ```javascript:content.js
+    startLine: 14
+    endLine: 25
+    ```
 
+3.  **Adding the Price Button:**  The `processTweet` function adds a "⌾ Price" button to tweets containing detected tokens.  The button is inserted into the top-right action area of the tweet.
+    ```javascript:content.js
+    startLine: 230
+    endLine: 342
+    ```
 
-2. Adding a price button to tweets with detected tokens (see content.js)
+4.  **Fetching Price Data:** When the button is clicked, the `content.js` script sends a message to `background.js` to fetch price data.  `background.js` uses several functions to interact with the CoinMarketCap API:
+    -   `getCMCId`: Retrieves the CoinMarketCap ID for a given token symbol, using a caching mechanism.
+        ```javascript:background.js
+        startLine: 252
+        endLine: 301
+        ```
+    -   `fetchHistoricalPrices`: Fetches historical price data for one or more tokens, centered around the tweet's timestamp.
+        ```javascript:background.js
+        startLine: 304
+        endLine: 484
+        ```
+    -   `fetchCurrentQuote`:  Fetches the latest price data.
+        ```javascript:background.js
+        startLine: 172
+        endLine: 221
+        ```
 
-```149:256:content.js
-function processTweet(tweetElement) {
-    console.log('processTweet called with tweetElement:', tweetElement);
-    if (tweetElement.hasAttribute('data-crypto-processed')) {
-        console.log('processTweet: Tweet already processed.');
-        return;
-    }
-    tweetElement.setAttribute('data-crypto-processed', 'true');
+5.  **Displaying the Popup:** The `content.js` script creates a popup to display the fetched price data. The `createPopup`, `setPopupLoadingState`, `setPopupErrorState`, and `setPopupDataState` functions manage the popup's content and appearance.
+    ```javascript:content.js
+    startLine: 68
+    endLine: 227
+    ```
 
-    const tweetTextElement = tweetElement.querySelector('[data-testid="tweetText"]');
-    if (!tweetTextElement) {
-        console.log('processTweet: No tweetTextElement found.');
-        return;
-    }
-
-    const tweetText = tweetTextElement.textContent;
-    const cryptoEntities = findCryptoEntities(tweetText);
-
-    if (cryptoEntities.length > 0) {
-        console.log('processTweet: Crypto entities found:', cryptoEntities);
-        const timestamp = getTweetTimestamp(tweetElement);
-
-        // Find the container that has the Grok button and three-dot menu
-        const topRightContainer = tweetElement.querySelector('div.css-175oi2r.r-1awozwy.r-18u37iz.r-1cmwbt1.r-1wtj0ep');
-        if (topRightContainer) {
-            // Create a new div to wrap our button in the same style as other top actions
-            const buttonWrapper = document.createElement('div');
-            buttonWrapper.className = 'css-175oi2r r-18u37iz r-1h0z5md';
-            
-            // Create the button with the same styling as the Grok button
-            const getPerformanceButton = document.createElement('button');
-            getPerformanceButton.textContent = '⌾ Price';
-            getPerformanceButton.classList.add('get-performance-button');
-            getPerformanceButton.setAttribute('role', 'button');
-
-            // Add debugging
-            console.log('Button created with classes:', getPerformanceButton.className);
-            console.log('Button computed style:', window.getComputedStyle(getPerformanceButton));
-
-            // Debug the class overwrite issue
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                        console.log('Button classes changed to:', getPerformanceButton.className);
-                    }
-                });
-            });
-
-            observer.observe(getPerformanceButton, {
-                attributes: true
-            });
-
-            // Let's also check what classes Twitter is applying
-            console.log('Twitter button example:', 
-                document.querySelector('div[role="group"] button')?.className
-            );
-
-            // Instead of overwriting, let's add Twitter's classes while keeping ours
-            getPerformanceButton.classList.add(
-                'css-175oi2r',
-                'r-1777fci',
-                'r-bt1l66',
-                'r-bztko3',
-                'r-lrvibr',
-                'r-1loqt21',
-                'r-1ny4l3l'
-            );
-
-            buttonWrapper.appendChild(getPerformanceButton);
-            
-            // Insert before the div that contains the three-dot menu
-            const threeDotContainer = topRightContainer.querySelector('div.css-175oi2r.r-1awozwy.r-6koalj.r-18u37iz');
-            if (threeDotContainer) {
-                topRightContainer.insertBefore(buttonWrapper, threeDotContainer);
-            } else {
-                topRightContainer.appendChild(buttonWrapper);
-            }
-
-            let popup = null;
-
-            getPerformanceButton.addEventListener('click', async () => {
-                if (popup) {
-                    popup.remove();
-                }
-
-                try {
-                    // Fetch data for all tokens in parallel
-                    const responses = await Promise.all(cryptoEntities.map(entity => 
-                        new Promise((resolve, reject) => {
-                            chrome.runtime.sendMessage({
-                                action: 'fetchPerformance',
-                                tokenSymbol: entity.symbol,
-                                tweetTimestamp: timestamp
-                            }, response => {
-                                if (chrome.runtime.lastError) {
-                                    reject(new Error(chrome.runtime.lastError.message));
-                                } else {
-                                    resolve({...response, tokenSymbol: entity.symbol});
-                                }
-                            });
-                        })
-                    ));
-
-                    popup = createPopup(responses, getPerformanceButton);
-                } catch (error) {
-                    console.error('Error fetching performance:', error);
-                    createPopup({ error: true, message: error.message }, getPerformanceButton);
-                }
-            });
-```
-
-
-3. Fetching historical and current prices using CoinMarketCap's API (see background.js)
-
-```228:296:background.js
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('onMessage received request:', request, 'from sender:', sender);
-    if (request.action === 'fetchPerformance') {
-        (async () => {
-            let apiKey;
-            try {
-                apiKey = await new Promise(resolve => {
-                    chrome.storage.sync.get(['cmcApiKey'], result => {
-                        console.log('chrome.storage.sync.get result:', result);
-                        console.log('API Key retrieved in background:', result.cmcApiKey);
-                        resolve(result.cmcApiKey);
-                    });
-                });
-
-                if (!apiKey) {
-                    console.error('API Key Not Set');
-                    sendResponse({ error: 'API Key Not Set' });
-                    return;
-                }
-
-                await testApiKey(apiKey);
-
-                const coinId = await fetchCoinId(request.tokenSymbol, apiKey);
-                if (!coinId) {
-                    console.error(`Could not find coin ID for ${request.tokenSymbol}`);
-                    sendResponse({ error: `Could not find coin ID for ${request.tokenSymbol}` });
-                    return;
-                }
-
-                const historicalData = await fetchHistoricalQuote(coinId, request.tweetTimestamp, apiKey);
-                if (!historicalData) {
-                    console.error(`Could not fetch historical quote for ${request.tokenSymbol}`);
-                    sendResponse({ error: `Could not fetch historical quote for ${request.tokenSymbol}` });
-                    return;
-                }
-                const historicalPrice = historicalData.historicalPrice;
-                const highPrice = historicalData.highPrice;
-                const lowPrice = historicalData.lowPrice;
-                const closestTimestamp = historicalData.closestTimestamp;
-
-
-                const currentQuote = await fetchCurrentQuote(coinId, apiKey);
-                if (!currentQuote) {
-                    console.error(`Could not fetch current quote for ${request.tokenSymbol}`);
-                    sendResponse({ error: `Could not fetch current quote for ${request.tokenSymbol}` });
-                    return;
-                }
-                const currentPrice = currentQuote.quote.USD.price;
-
-                const performance = ((currentPrice - historicalPrice) / historicalPrice) * 100;
-                console.log('Calculated performance:', performance);
-                sendResponse({
-                    performance: performance,
-                    historicalPrice: historicalPrice,
-                    currentPrice: currentPrice,
-                    highPrice: highPrice,
-                    lowPrice: lowPrice,
-                    closestTimestamp: closestTimestamp
-                });
-
-
-            } catch (error) {
-                console.error("Error in background script:", error);
-                sendResponse({ error: error.message });
-            }
-        })();
-        return true;
-    }
-});
-```
-
+6. **Handling Navigation:** The extension cleans up any open popups when the user navigates within Twitter/X or leaves the page.
+    ```javascript:content.js
+    startLine: 563
+    endLine: 593
+    ```
 
 ## Known Issues
 
-1. **Token Detection**
-   - Currently detects any `$` followed by letters as a token
-   - No validation against actual cryptocurrency symbols
-   - May show false positives for non-crypto mentions (e.g., `$USD`)
+1.  **Token Detection:**
+    -   Currently detects *any* `$` followed by letters as a token.
+    -   No validation against a list of actual cryptocurrency symbols, thus showing false positives (stocks, currencies, etc.).
 
-2. **API Limitations**
-   - Requires personal CoinMarketCap API key
-   - Free API tier has rate limits
-   - Historical data fetching sometimes fails due to API constraints
+2.  **API Limitations:**
+    -   Requires a *personal* CoinMarketCap API key. I'll update this if there's enough interest. 
+    -   The free "Basic" API tier has severe limitations on historical data.
 
-3. **Performance**
-   - May slow down Twitter browsing with many token mentions
-   - Cache implementation is memory-only and clears on browser restart
+3.  **Performance:**
+    -   On pages with many token mentions, there might be a slight performance impact due to DOM manipulation and API calls.
 
-4. **UI/UX**
-   - Button styling might break with Twitter UI updates
-   - Popup positioning can be inconsistent
-   - No dark mode support
+4.  **UI/UX:**
+    -   Button styling might be affected by future Twitter UI updates.  The extension attempts to match Twitter's button styles, but this is inherently fragile.
+    -   Popup positioning is relative to the button; it might appear off-screen or in unexpected locations in some cases.
+    -   The popup's appearance is designed to match both light and dark Twitter themes, but more comprehensive theming could be added.
 
 ## Future Improvements
 
-- Add token symbol validation
-- Support multiple price data providers
-- Implement persistent caching
-- Add customizable time ranges
-- Include trading volume data
-- Support for dark mode
-- Add price alerts functionality
+-   **Token Validation:** Implement a mechanism to validate detected tokens against a known list of cryptocurrency symbols (e.g., fetched from an API or maintained locally).
+-   **High/Low Price:** Add High and Low prices (since time of tweet) to the popup. This was previously enabled but led to hitting rate limits. 
+-   **Multiple API Providers:**  Consider supporting other price data providers (like CoinGecko) as fallbacks or alternatives to CoinMarketCap.
+-   **Persistent Caching:**  Improve caching to persist across browser restarts (e.g., using `chrome.storage.local`).
+-   **Customizable Time Ranges:** Allow users to select different time ranges for historical price data.
+-   **Trading Volume:** Include trading volume data in the popup.
+-   **Configuration Options:** Add a popup or options page to allow users to customize settings (e.g., preferred currency, data providers).
+-   **Refactor `background.js`:** The `fetchHistoricalPrices` function in `background.js` will be refactored for better readability and maintainability.
 
 ## Dependencies
 
-- Chrome Browser
-- CoinMarketCap API Key (Free tier available)
+-   Chrome Browser
+-   CoinMarketCap API Key (Free "Basic" tier available)
 
 ## Privacy Note
 
-This extension requires a CoinMarketCap API key to function. Your API key is stored locally in Chrome's storage and is only used for price data requests. No personal data is collected or transmitted.
+This extension requires a CoinMarketCap API key to function. Your API key is stored *locally* in Chrome's storage (`chrome.storage.sync`) and is *only* used for making requests to the CoinMarketCap API. No personal data is collected or transmitted by the extension itself. However, CoinMarketCap may log your API requests. Refer to CoinMarketCap's privacy policy for details.
 
 ## Contributing
 
